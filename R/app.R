@@ -8,7 +8,15 @@ library(RColorBrewer)
 
 # loading data
 setwd('C:/Users/user/GWAS-scRNAseq-Integration/data/') # change here
+
+if(!length(list.files(path = './getMarkers/')) > 0)
+  unzip(zipfile = './getMarkers.zip')
+
 tissues <- gsub('.csv', '', list.files(path = './getMarkers/'), fixed = TRUE)
+
+if(!file.exists('gwas_catalog_v1.0.2-associations_e92_r2018-05-12.tsv'))
+  unzip(zipfile = './gwas_catalog_v1.0.2-associations_e92_r2018-05-12.tsv.zip')
+
 gwas <- read.delim('./gwas_catalog_v1.0.2-associations_e92_r2018-05-12.tsv')
 diseases <- as.character(unique(gwas$DISEASE.TRAIT))
 genes <- as.character(unique(gwas$DISEASE.TRAIT))
