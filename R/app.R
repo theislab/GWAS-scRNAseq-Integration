@@ -5,6 +5,7 @@ library(Seurat)
 library(dplyr)
 library(pheatmap)
 library(RColorBrewer)
+library(melt)
 
 # loading data
 setwd('C:/Users/user/GWAS-scRNAseq-Integration/data/') # change here
@@ -18,8 +19,14 @@ if(!file.exists('gwas_catalog_v1.0.2-associations_e92_r2018-05-12.tsv'))
   unzip(zipfile = './gwas_catalog_v1.0.2-associations_e92_r2018-05-12.tsv.zip')
 
 gwas <- read.delim('./gwas_catalog_v1.0.2-associations_e92_r2018-05-12.tsv')
+
 diseases <- as.character(unique(gwas$DISEASE.TRAIT))
-genes <- as.character(unique(gwas$DISEASE.TRAIT))
+
+geneList <- unique(unlist(lapply(as.character(gwas$REPORTED.GENE.S.), function(x) ifelse(grepl(',',x),strsplit(x, ",", fixed = TRUE),x))))
+if('intergenic' %in% geneList){
+  geneList <-  geneList[-which(geneList=='intergenic')] 
+}
+genes <- as.character(geneList)
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(theme="simplex.min.css",
@@ -87,6 +94,12 @@ ui <- fluidPage(theme="simplex.min.css",
                     column(6, align = 'center', plotOutput("GWASplot_all", height = "600px")))
                   , fluidRow(
                     column(6, align = 'center', plotOutput("GWASplot", height = "600px"))
+                  )),
+                  tabPanel("Gene-wise Visualization",
+                    fluidRow(
+                    column(12, plotOutput("GWAShits", height = "300px")))
+                  , fluidRow(
+                    column(12, plotOutput("GWAShits_all", height = "300px"))
                   ))
                   
       )
@@ -239,6 +252,50 @@ server <- function(input, output) {
     tmp <- tmp[order(tmp$p.value, decreasing = FALSE)[1:15],] # top 15 hits
     return(tmp)
   })
+  # get GWAS hits for selected gene
+  getData6 <- reactive({
+    geneList <- unlist(lapply(as.character(gwas$REPORTED.GENE.S.), function(x) ifelse(grepl(',',x),strsplit(x, ",", fixed = TRUE),x)))
+    if('intergenic' %in% geneList ){
+      geneList <-  geneList[-which(geneList=='intergenic')] 
+    }
+    if('Intergenic' %in% geneList ){
+      geneList <-  geneList[-which(geneList=='Intergenic')] 
+    }
+    a <- table(geneList)
+    a[names(a) == input$gene]
+    
+    x <- lapply(split(1:nrow(gwas), gwas$DISEASE.TRAIT), function(y){
+      tmp <- gwas[y,]
+      tmpList <- unlist(lapply(as.character(tmp$REPORTED.GENE.S.), function(x) ifelse(grepl(',',x),strsplit(x, ",", fixed = TRUE),x)))
+      if('intergenic' %in% tmpList){
+        tmpList <-  tmpList[-which(tmpList=='intergenic')] 
+      }
+      if(input$gene %in% tmpList)
+        unique(tmp$DISEASE.TRAIT)
+    })
+    v <- c(a[names(a) == input$gene],length(x[!unlist(lapply(x, is.null))]))
+    names(v) <- c("no. of GWAS hits","no. of GWAS disease traits implicated")
+    return(v)
+  })
+  
+  getData7 <- reactive({
+    x <- lapply(split(1:nrow(gwas), gwas$DISEASE.TRAIT), function(y){
+    tmp <- gwas[y,]
+    tmpList <- unlist(lapply(as.character(tmp$REPORTED.GENE.S.), function(x) ifelse(grepl(',',x),strsplit(x, ",", fixed = TRUE),x)))
+    if('intergenic' %in% tmpList){
+      tmpList <-  tmpList[-which(tmpList=='intergenic')] 
+    }
+    if(input$gene %in% tmpList)
+      c(tmp$P.VALUE[which(tmp$REPORTED.GENE.S == input$gene)][1])
+  })
+    z <-x[!unlist(lapply(x, is.null))]
+    df <- melt(z)
+    df <- df[complete.cases(df),]
+    df$pvalue <- -log10(df$value)
+    df <- df[order(df$pvalue, decreasing = TRUE),]
+    
+    return(df)
+  })
   
   # displaying MCA cell-type markers table for selected tissue
   output$contents <- DT::renderDataTable(DT::datatable({
@@ -304,7 +361,20 @@ server <- function(input, output) {
       labs(x = "cell-types (all tissues)", y = "-log10(p value)") + 
       coord_flip() +
       theme(plot.title = element_text(hjust = 2)) + geom_hline(yintercept = -log10(0.05))
-  }, height = 500, width = 500)
+  }, height = 400, width = 400)
+  
+  output$GWAShits <- renderPlot({
+    barplot(getData6(), horiz = FALSE, col = c('royal blue','tomato'), main = paste0('Gene: ',input$gene), ylab = 'frequency')
+  })
+  
+  output$GWAShits_all <- renderPlot({
+    ggplot(getData7(), aes(x = reorder(L1, pvalue), y = pvalue)) + 
+      geom_bar(stat = "identity", fill="tomato", colour="black") + 
+      labs(x = "GWAS disease traits implicated in gene", y = "-log10(p value)") + 
+      coord_flip() + 
+      theme(plot.title = element_text(hjust = 2)) + geom_hline(yintercept = -log10(0.05))
+  }, height = 600, width = 1200)
+
 
 }
 
